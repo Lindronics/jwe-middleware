@@ -3,20 +3,42 @@ use std::{
     rc::Rc,
 };
 
-use actix_middleware::{request::DecryptRequest, response::EncryptResponse};
+use actix_middleware::{
+    request::DecryptRequest,
+    response::{EncryptResponse, Keystore},
+};
 use actix_web::{web, App, HttpServer};
 use biscuit::{
     jwa::{ContentEncryptionAlgorithm, EncryptionOptions, KeyManagementAlgorithm},
-    jwe, Empty,
+    jwe,
+    jwk::JWKSet,
+    Empty,
 };
 use tokio::task::JoinHandle;
+
+#[derive(Clone)]
+struct CustomKeystore {
+    keys: JWKSet<Empty>,
+}
+
+impl Keystore for CustomKeystore {
+    fn select_key(
+        &self,
+        request: &actix_web::dev::ServiceRequest,
+    ) -> impl std::future::Future<Output = anyhow::Result<Option<&decryptor::JWK<Empty>>>> + Send
+    {
+        let kid = request.headers().get("response-kid").unwrap();
+        dbg!("kid: {:?}", kid);
+        std::future::ready(Ok(self.keys.find(kid.to_str().unwrap())))
+    }
+}
 
 struct Server {
     address: SocketAddr,
     #[allow(dead_code)]
     join_handle: JoinHandle<Result<(), std::io::Error>>,
     server_key: decryptor::JWK<decryptor::Empty>,
-    client_key: decryptor::JWK<decryptor::Empty>,
+    keystore: CustomKeystore,
 }
 
 async fn handler(request: web::Bytes) -> web::Bytes {
@@ -31,10 +53,17 @@ fn actix_server() -> Server {
         .unwrap();
 
     let server_key = decryptor::JWK::new_octet_key(&[0; 32], decryptor::Empty {});
-    let client_key = decryptor::JWK::new_octet_key(&[0; 32], decryptor::Empty {});
+    let mut client_key = decryptor::JWK::new_octet_key(&[0; 32], decryptor::Empty {});
+    client_key.common.key_id = Some("asdf".into());
+
+    let keystore = CustomKeystore {
+        keys: JWKSet {
+            keys: vec![server_key.clone(), client_key.clone()],
+        },
+    };
 
     let server_key_clone = server_key.clone();
-    let client_key_clone = server_key.clone();
+    let keystore_clone = keystore.clone();
 
     let join_handle = tokio::spawn(
         HttpServer::new(move || {
@@ -45,7 +74,7 @@ fn actix_server() -> Server {
                         jwk: Rc::new(server_key_clone.clone()),
                     })
                     .wrap(EncryptResponse {
-                        jwk: Rc::new(client_key_clone.clone()),
+                        keystore: Rc::new(keystore_clone.clone()),
                     }),
             )
         })
@@ -58,15 +87,17 @@ fn actix_server() -> Server {
         address,
         join_handle,
         server_key,
-        client_key,
+        keystore,
     }
 }
 
 #[tokio::test]
 async fn middleware_works() {
     let server = actix_server();
-
+    let client_key = server.keystore.keys.keys[1].clone();
     let request_body = serde_json::json!({"hello": "world"});
+
+    // Encrypt request
     let plaintext = serde_json::ser::to_vec(&request_body).unwrap();
     let jwe = jwe::Compact::new_decrypted(
         From::from(jwe::RegisteredHeader {
@@ -88,21 +119,24 @@ async fn middleware_works() {
     };
     let encrypted_body = encrypted_jwe.encode();
 
+    // Send request
     let response = reqwest::Client::new()
         .post(&format!("http://{}", server.address))
         .body(encrypted_body)
+        .header("response-kid", client_key.common.key_id.clone().unwrap())
         .send()
         .await
+        .unwrap()
+        .text()
+        .await
         .unwrap();
-    let response_body = response.text().await.unwrap();
 
-    dbg!(&response_body);
-
-    let token: jwe::Compact<Vec<u8>, Empty> = jwe::Compact::new_encrypted(&response_body);
+    // Decrypt response
+    let token = jwe::Compact::<Vec<u8>, Empty>::new_encrypted(&response);
 
     let jwe::Compact::Decrypted { payload, .. } = token
         .decrypt(
-            &server.client_key,
+            &client_key,
             KeyManagementAlgorithm::A256GCMKW,
             ContentEncryptionAlgorithm::A256GCM,
         )
@@ -111,7 +145,7 @@ async fn middleware_works() {
         panic!()
     };
 
-    let response_body: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    let response_body = serde_json::from_slice::<serde_json::Value>(&payload).unwrap();
     assert_eq!(response_body, request_body);
 }
 
