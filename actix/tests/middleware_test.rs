@@ -7,15 +7,21 @@ use actix_middleware::{request::DecryptRequest, response::EncryptResponse};
 use actix_web::{web, App, HttpServer};
 use biscuit::{
     jwa::{ContentEncryptionAlgorithm, EncryptionOptions, KeyManagementAlgorithm},
-    jwe,
+    jwe, Empty,
 };
-use serde_json::json;
 use tokio::task::JoinHandle;
 
 struct Server {
     address: SocketAddr,
-    _join_handle: JoinHandle<Result<(), std::io::Error>>,
-    jwk: decryptor::JWK<decryptor::Empty>,
+    #[allow(dead_code)]
+    join_handle: JoinHandle<Result<(), std::io::Error>>,
+    server_key: decryptor::JWK<decryptor::Empty>,
+    client_key: decryptor::JWK<decryptor::Empty>,
+}
+
+async fn handler(request: web::Bytes) -> web::Bytes {
+    println!("{:?}", String::from_utf8(request.to_vec()));
+    request
 }
 
 fn actix_server() -> Server {
@@ -24,19 +30,22 @@ fn actix_server() -> Server {
         .local_addr()
         .unwrap();
 
-    let jwk = decryptor::JWK::new_octet_key(&[0; 32], decryptor::Empty {});
+    let server_key = decryptor::JWK::new_octet_key(&[0; 32], decryptor::Empty {});
+    let client_key = decryptor::JWK::new_octet_key(&[0; 32], decryptor::Empty {});
 
-    let jwk_clone = jwk.clone();
+    let server_key_clone = server_key.clone();
+    let client_key_clone = server_key.clone();
+
     let join_handle = tokio::spawn(
         HttpServer::new(move || {
             App::new().service(
                 web::resource("/")
-                    .to(|| async { "{\"hello world\": \"a\"}" })
+                    .to(handler)
                     .wrap(DecryptRequest {
-                        jwk: Rc::new(jwk_clone.clone()),
+                        jwk: Rc::new(server_key_clone.clone()),
                     })
                     .wrap(EncryptResponse {
-                        jwk: Rc::new(jwk_clone.clone()),
+                        jwk: Rc::new(client_key_clone.clone()),
                     }),
             )
         })
@@ -47,8 +56,9 @@ fn actix_server() -> Server {
 
     Server {
         address,
-        _join_handle: join_handle,
-        jwk,
+        join_handle,
+        server_key,
+        client_key,
     }
 }
 
@@ -72,24 +82,37 @@ async fn middleware_works() {
     nonce_bytes.resize(96 / 8, 0);
     let options = EncryptionOptions::AES_GCM { nonce: nonce_bytes };
 
-    // Encrypt
-    let jwe::Compact::Encrypted(encrypted_jwe) = jwe.encrypt(&server.jwk, &options).unwrap() else {
+    let jwe::Compact::Encrypted(encrypted_jwe) = jwe.encrypt(&server.server_key, &options).unwrap()
+    else {
         panic!()
     };
     let encrypted_body = encrypted_jwe.encode();
-    dbg!(&encrypted_body);
 
     let response = reqwest::Client::new()
         .post(&format!("http://{}", server.address))
         .body(encrypted_body)
         .send()
         .await
-        .unwrap()
-        .error_for_status()
         .unwrap();
-
     let response_body = response.text().await.unwrap();
-    assert_eq!(response_body, json!({"hello world": "a"}));
+
+    dbg!(&response_body);
+
+    let token: jwe::Compact<Vec<u8>, Empty> = jwe::Compact::new_encrypted(&response_body);
+
+    let jwe::Compact::Decrypted { payload, .. } = token
+        .decrypt(
+            &server.client_key,
+            KeyManagementAlgorithm::A256GCMKW,
+            ContentEncryptionAlgorithm::A256GCM,
+        )
+        .unwrap()
+    else {
+        panic!()
+    };
+
+    let response_body: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    assert_eq!(response_body, request_body);
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
