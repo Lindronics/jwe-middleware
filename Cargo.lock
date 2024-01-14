@@ -478,6 +478,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "biscuit",
+ "num-bigint",
 ]
 
 [[package]]

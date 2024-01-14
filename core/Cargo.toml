@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 biscuit = "0.7"
+num-bigint = "0.4.4"

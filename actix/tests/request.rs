@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
 };
 
-use actix_middleware::request::RequestEncryption;
+use actix_middleware::{request::DecryptRequest, response::EncryptResponse};
 use actix_web::{web, App, HttpServer};
 use biscuit::{
     jwa::{ContentEncryptionAlgorithm, EncryptionOptions, KeyManagementAlgorithm},
@@ -32,7 +32,10 @@ fn actix_server() -> Server {
             App::new().service(
                 web::resource("/")
                     .to(|| async { "{\"hello world\": \"a\"}" })
-                    .wrap(RequestEncryption {
+                    .wrap(DecryptRequest {
+                        jwk: Rc::new(jwk_clone.clone()),
+                    })
+                    .wrap(EncryptResponse {
                         jwk: Rc::new(jwk_clone.clone()),
                     }),
             )
@@ -85,7 +88,7 @@ async fn middleware_works() {
         .error_for_status()
         .unwrap();
 
-    let response_body: serde_json::Value = response.json().await.unwrap();
+    let response_body = response.text().await.unwrap();
     assert_eq!(response_body, json!({"hello world": "a"}));
 }
 

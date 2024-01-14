@@ -12,11 +12,11 @@ use actix_web::{
 use decryptor::{Empty, JWK};
 use futures_util::future::LocalBoxFuture;
 
-pub struct RequestEncryption {
+pub struct DecryptRequest {
     pub jwk: Rc<JWK<Empty>>,
 }
 
-impl<S: 'static, B> Transform<S, ServiceRequest> for RequestEncryption
+impl<S: 'static, B> Transform<S, ServiceRequest> for DecryptRequest
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
@@ -25,23 +25,23 @@ where
     type Response = ServiceResponse<B>;
     type Error = Error;
     type InitError = ();
-    type Transform = SayHiMiddleware<S>;
+    type Transform = DecryptRequestMiddleware<S>;
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ready(Ok(SayHiMiddleware {
+        ready(Ok(DecryptRequestMiddleware {
             service: Rc::new(service),
             jwk: self.jwk.clone(),
         }))
     }
 }
 
-pub struct SayHiMiddleware<S> {
+pub struct DecryptRequestMiddleware<S> {
     service: Rc<S>,
     jwk: Rc<JWK<Empty>>,
 }
 
-impl<S, B> Service<ServiceRequest> for SayHiMiddleware<S>
+impl<S, B> Service<ServiceRequest> for DecryptRequestMiddleware<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
@@ -60,7 +60,7 @@ where
         Box::pin(async move {
             let body = req.extract::<web::Bytes>().await.unwrap();
 
-            let decrypted_body = decryptor::decrypt_request(&body, &jwk).unwrap();
+            let decrypted_body = decryptor::decrypt(&body, &jwk).unwrap();
 
             req.set_payload(bytes_to_payload(decrypted_body.into()));
 
