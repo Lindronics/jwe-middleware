@@ -1,0 +1,24 @@
+[package]
+name = "actix-middleware"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Local
+decryptor = { path = "../core" }
+
+# External
+actix-http = "3.5.1"
+actix-web = "4"
+anyhow = "1.0.79"
+futures-util = "0.3"
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
+
+[dev-dependencies]
+num-bigint = "0.4.4"
+tokio = { version = "1", features = ["full"] }
+biscuit = "0.7"
+reqwest = { version = "0.11.23", features = ["json"] }
