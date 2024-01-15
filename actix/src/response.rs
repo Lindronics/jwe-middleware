@@ -9,18 +9,12 @@ use actix_web::{
     dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
     Error, ResponseError,
 };
-use decryptor::{Empty, JWK};
 use futures_util::future::LocalBoxFuture;
+use jwe_core::{Empty, JWK};
 
-#[derive(Debug, thiserror::Error)]
-pub enum EncryptError<K> {
-    #[error("Decryption failed")]
-    EncryptionFailed,
-    #[error("Keystore could not be accessed: {0}")]
-    KeystoreError(K),
-    #[error("Key could not be found")]
-    KeyNotFound,
-}
+////////////////////////////////////////////////////////////////////////////////
+// Middleware
+////////////////////////////////////////////////////////////////////////////////
 
 pub struct EncryptResponse<K, E> {
     keystore: Rc<K>,
@@ -95,9 +89,9 @@ where
                 .ok_or(EncryptError::KeyNotFound)
                 .map_err(E::from)?;
 
-            let res = svc.call(req).await.unwrap().map_body(|_, body| {
+            let res = svc.call(req).await?.map_body(|_, body| {
                 let body = body.try_into_bytes().unwrap().to_vec();
-                let encrypted = decryptor::encrypt(body, jwk).unwrap();
+                let encrypted = jwe_core::encrypt(body, jwk).unwrap();
                 BoxBody::new(encrypted)
             });
 
@@ -106,6 +100,10 @@ where
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// Keystore
+////////////////////////////////////////////////////////////////////////////////
+
 pub trait Keystore {
     type Error;
 
@@ -113,4 +111,18 @@ pub trait Keystore {
         &self,
         request: &ServiceRequest,
     ) -> impl Future<Output = Result<Option<&JWK<Empty>>, Self::Error>> + Send;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Error
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, thiserror::Error)]
+pub enum EncryptError<K> {
+    #[error("Encryption failed")]
+    EncryptionFailed,
+    #[error("Keystore could not be accessed: {0}")]
+    KeystoreError(K),
+    #[error("Key could not be found")]
+    KeyNotFound,
 }

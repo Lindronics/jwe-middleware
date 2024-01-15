@@ -76,8 +76,8 @@ dependencies = [
  "actix-web",
  "anyhow",
  "biscuit",
- "decryptor",
  "futures-util",
+ "jwe-core",
  "num-bigint",
  "reqwest",
  "serde",
@@ -474,15 +474,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e962a19be5cfc3f3bf6dd8f61eb50107f356ad6270fbb3ed41476571db78be5"
 
 [[package]]
-name = "decryptor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "biscuit",
- "num-bigint",
-]
-
-[[package]]
 name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -837,6 +828,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a1d36f1235bc969acba30b7f5990b864423a6068a10f7c90ae8f0112e3a59d1"
 dependencies = [
  "wasm-bindgen",
+]
+
+[[package]]
+name = "jwe-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "biscuit",
+ "num-bigint",
+ "thiserror",
 ]
 
 [[package]]

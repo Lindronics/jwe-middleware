@@ -1,10 +1,7 @@
-use std::{
-    net::{SocketAddr, TcpListener},
-    rc::Rc,
-};
+use std::net::{SocketAddr, TcpListener};
 
 use actix_middleware::{
-    request::DecryptRequest,
+    request::{DecryptError, DecryptRequest},
     response::{EncryptError, EncryptResponse, Keystore},
 };
 use actix_web::{web, App, HttpServer, ResponseError};
@@ -27,10 +24,9 @@ impl Keystore for CustomKeystore {
     fn select_key(
         &self,
         request: &actix_web::dev::ServiceRequest,
-    ) -> impl std::future::Future<Output = anyhow::Result<Option<&decryptor::JWK<Empty>>>> + Send
+    ) -> impl std::future::Future<Output = anyhow::Result<Option<&jwe_core::JWK<Empty>>>> + Send
     {
         let kid = request.headers().get("response-kid").unwrap();
-        dbg!("kid: {:?}", kid);
         std::future::ready(Ok(self.keys.find(kid.to_str().unwrap())))
     }
 }
@@ -55,11 +51,17 @@ impl From<EncryptError<anyhow::Error>> for CustomEncryptError {
     }
 }
 
+impl From<DecryptError> for CustomEncryptError {
+    fn from(_value: DecryptError) -> Self {
+        todo!()
+    }
+}
+
 struct Server {
     address: SocketAddr,
     #[allow(dead_code)]
     join_handle: JoinHandle<Result<(), std::io::Error>>,
-    server_key: decryptor::JWK<decryptor::Empty>,
+    server_key: jwe_core::JWK<jwe_core::Empty>,
     keystore: CustomKeystore,
 }
 
@@ -74,8 +76,8 @@ fn actix_server() -> Server {
         .local_addr()
         .unwrap();
 
-    let server_key = decryptor::JWK::new_octet_key(&[0; 32], decryptor::Empty {});
-    let mut client_key = decryptor::JWK::new_octet_key(&[0; 32], decryptor::Empty {});
+    let server_key = jwe_core::JWK::new_octet_key(&[0; 32], jwe_core::Empty {});
+    let mut client_key = jwe_core::JWK::new_octet_key(&[0; 32], jwe_core::Empty {});
     client_key.common.key_id = Some("asdf".into());
 
     let keystore = CustomKeystore {
@@ -92,9 +94,9 @@ fn actix_server() -> Server {
             App::new().service(
                 web::resource("/")
                     .to(handler)
-                    .wrap(DecryptRequest {
-                        jwk: Rc::new(server_key_clone.clone()),
-                    })
+                    .wrap(DecryptRequest::<CustomEncryptError>::new(
+                        server_key_clone.clone(),
+                    ))
                     .wrap(EncryptResponse::<CustomKeystore, CustomEncryptError>::new(
                         keystore_clone.clone(),
                     )),

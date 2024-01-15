@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 # Local
-decryptor = { path = "../core" }
+jwe-core = { path = "../core" }
 
 # External
 actix-http = "3.5.1"
