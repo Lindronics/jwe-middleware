@@ -5,9 +5,9 @@ use std::{
 
 use actix_middleware::{
     request::DecryptRequest,
-    response::{EncryptResponse, Keystore},
+    response::{EncryptError, EncryptResponse, Keystore},
 };
-use actix_web::{web, App, HttpServer};
+use actix_web::{web, App, HttpServer, ResponseError};
 use biscuit::{
     jwa::{ContentEncryptionAlgorithm, EncryptionOptions, KeyManagementAlgorithm},
     jwe,
@@ -22,6 +22,8 @@ struct CustomKeystore {
 }
 
 impl Keystore for CustomKeystore {
+    type Error = anyhow::Error;
+
     fn select_key(
         &self,
         request: &actix_web::dev::ServiceRequest,
@@ -30,6 +32,26 @@ impl Keystore for CustomKeystore {
         let kid = request.headers().get("response-kid").unwrap();
         dbg!("kid: {:?}", kid);
         std::future::ready(Ok(self.keys.find(kid.to_str().unwrap())))
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Decryption failed")]
+struct CustomEncryptError;
+
+impl ResponseError for CustomEncryptError {
+    fn status_code(&self) -> actix_http::StatusCode {
+        actix_http::StatusCode::INTERNAL_SERVER_ERROR
+    }
+
+    fn error_response(&self) -> actix_web::HttpResponse<actix_http::body::BoxBody> {
+        todo!()
+    }
+}
+
+impl From<EncryptError<anyhow::Error>> for CustomEncryptError {
+    fn from(_value: EncryptError<anyhow::Error>) -> Self {
+        todo!()
     }
 }
 
@@ -73,9 +95,9 @@ fn actix_server() -> Server {
                     .wrap(DecryptRequest {
                         jwk: Rc::new(server_key_clone.clone()),
                     })
-                    .wrap(EncryptResponse {
-                        keystore: Rc::new(keystore_clone.clone()),
-                    }),
+                    .wrap(EncryptResponse::<CustomKeystore, CustomEncryptError>::new(
+                        keystore_clone.clone(),
+                    )),
             )
         })
         .bind(address)
