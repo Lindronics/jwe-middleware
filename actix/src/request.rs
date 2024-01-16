@@ -9,7 +9,7 @@ use actix_web::{
     web, Error, ResponseError,
 };
 use futures_util::future::LocalBoxFuture;
-use jwe_core::Decryptor;
+use jwe_core::decrypt::Decryptor;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Middlware

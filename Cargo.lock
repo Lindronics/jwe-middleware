@@ -69,24 +69,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "actix-middleware"
-version = "0.1.0"
-dependencies = [
- "actix-http",
- "actix-web",
- "anyhow",
- "biscuit",
- "futures-util",
- "jwe-core",
- "num-bigint",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "actix-router"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -531,6 +513,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "example"
+version = "0.1.0"
+dependencies = [
+ "actix-http",
+ "actix-web",
+ "anyhow",
+ "biscuit",
+ "futures-util",
+ "jwe-actix-middleware",
+ "jwe-core",
+ "num-bigint",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -831,12 +832,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "jwe-actix-middleware"
+version = "0.1.0"
+dependencies = [
+ "actix-http",
+ "actix-web",
+ "anyhow",
+ "biscuit",
+ "futures-util",
+ "jwe-core",
+ "num-bigint",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "jwe-core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "biscuit",
- "num-bigint",
+ "rand",
  "thiserror",
 ]
 

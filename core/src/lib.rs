@@ -1,7 +1,4 @@
-mod decrypt;
-mod encrypt;
+pub mod decrypt;
+pub mod encrypt;
 
-pub use biscuit::{jwk::JWK, Empty};
-
-pub use decrypt::*;
-pub use encrypt::*;
+pub use biscuit::{jwk::JWKSet, jwk::JWK, Empty};

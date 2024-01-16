@@ -1,4 +1,4 @@
 [workspace]
 resolver = "2"
 
-members = ["actix", "core"]
+members = ["actix", "core", "example"]

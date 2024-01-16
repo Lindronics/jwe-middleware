@@ -9,7 +9,7 @@ use actix_web::{
     Error, ResponseError,
 };
 use futures_util::future::LocalBoxFuture;
-use jwe_core::Encryptor;
+use jwe_core::encrypt::Encryptor;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Middleware

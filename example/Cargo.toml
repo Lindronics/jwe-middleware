@@ -1,13 +1,15 @@
 [package]
-name = "jwe-actix-middleware"
+name = "example"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 # Local
-jwe-core = { path = "../core" }
+jwe-core = { path = "../core", features = ["biscuit"] }
+jwe-actix-middleware = { path = "../actix" }
 
 # External
 actix-http = "3.5.1"
@@ -17,9 +19,9 @@ futures-util = "0.3"
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
 thiserror = "1"
+tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 num-bigint = "0.4.4"
-tokio = { version = "1", features = ["full"] }
 biscuit = "0.7"
 reqwest = { version = "0.11.23", features = ["json"] }
