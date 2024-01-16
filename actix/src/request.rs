@@ -92,13 +92,3 @@ fn bytes_to_payload(buf: web::Bytes) -> dev::Payload {
     pl.unread_data(buf);
     dev::Payload::from(pl)
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// Error
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug, thiserror::Error)]
-pub enum DecryptError {
-    #[error(transparent)]
-    DecryptionFailed(#[from] jwe_core::DecryptError),
-}
