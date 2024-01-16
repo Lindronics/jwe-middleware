@@ -1,8 +1,8 @@
 use std::net::{SocketAddr, TcpListener};
 
 use actix_middleware::{
-    request::{DecryptError, DecryptRequest},
-    response::{EncryptError, EncryptResponse, Keystore},
+    request::DecryptRequest,
+    response::{EncryptResponse, Keystore},
 };
 use actix_web::{web, App, HttpServer, ResponseError};
 use biscuit::{
@@ -11,6 +11,7 @@ use biscuit::{
     jwk::JWKSet,
     Empty,
 };
+use jwe_core::{DecryptError, DefaultDecryptor, DefaultEncryptor, EncryptError};
 use tokio::task::JoinHandle;
 
 #[derive(Clone)]
@@ -19,15 +20,19 @@ struct CustomKeystore {
 }
 
 impl Keystore for CustomKeystore {
-    type Error = anyhow::Error;
+    type Key = jwe_core::JWK<Empty>;
+    type Error = CustomEncryptError;
 
     fn select_key(
         &self,
         request: &actix_web::dev::ServiceRequest,
-    ) -> impl std::future::Future<Output = anyhow::Result<Option<&jwe_core::JWK<Empty>>>> + Send
-    {
+    ) -> impl std::future::Future<Output = Result<&jwe_core::JWK<Empty>, Self::Error>> + Send {
         let kid = request.headers().get("response-kid").unwrap();
-        std::future::ready(Ok(self.keys.find(kid.to_str().unwrap())))
+        std::future::ready(
+            self.keys
+                .find(kid.to_str().unwrap())
+                .ok_or(CustomEncryptError),
+        )
     }
 }
 
@@ -45,14 +50,14 @@ impl ResponseError for CustomEncryptError {
     }
 }
 
-impl From<EncryptError<anyhow::Error>> for CustomEncryptError {
-    fn from(_value: EncryptError<anyhow::Error>) -> Self {
+impl From<EncryptError> for CustomEncryptError {
+    fn from(_value: EncryptError) -> Self {
         todo!()
     }
 }
 
 impl From<DecryptError> for CustomEncryptError {
-    fn from(_value: DecryptError) -> Self {
+    fn from(_e: DecryptError) -> Self {
         todo!()
     }
 }
@@ -94,11 +99,12 @@ fn actix_server() -> Server {
             App::new().service(
                 web::resource("/")
                     .to(handler)
-                    .wrap(DecryptRequest::<CustomEncryptError>::new(
-                        server_key_clone.clone(),
+                    .wrap(DecryptRequest::new(
+                        DefaultDecryptor::<CustomEncryptError>::new(server_key_clone.clone()),
                     ))
-                    .wrap(EncryptResponse::<CustomKeystore, CustomEncryptError>::new(
+                    .wrap(EncryptResponse::new(
                         keystore_clone.clone(),
+                        DefaultEncryptor::<CustomEncryptError>::default(),
                     )),
             )
         })

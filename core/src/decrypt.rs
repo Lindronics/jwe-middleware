@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use biscuit::{
     jwa::{ContentEncryptionAlgorithm, KeyManagementAlgorithm},
     jwe,
@@ -5,18 +7,51 @@ use biscuit::{
     Empty,
 };
 
-pub fn decrypt(body: &[u8], key: &JWK<Empty>) -> Result<Vec<u8>, DecryptError> {
-    let body = std::str::from_utf8(body)?;
+pub trait Decryptor {
+    type Error;
 
-    let token: jwe::Compact<Vec<u8>, Empty> = jwe::Compact::new_encrypted(body);
+    fn decrypt(&self, body: &[u8]) -> Result<Vec<u8>, Self::Error>;
+}
 
-    match token.decrypt(
-        key,
-        KeyManagementAlgorithm::A256GCMKW,
-        ContentEncryptionAlgorithm::A256GCM,
-    )? {
-        jwe::Compact::Decrypted { payload, .. } => Ok(payload),
-        _ => Err(DecryptError::DecryptionFailed),
+pub struct DefaultDecryptor<E> {
+    key: JWK<Empty>,
+    e: PhantomData<E>,
+}
+
+impl<E> DefaultDecryptor<E>
+where
+    E: From<DecryptError>,
+{
+    pub fn new(key: JWK<Empty>) -> Self {
+        Self {
+            key,
+            e: PhantomData,
+        }
+    }
+}
+
+impl<E> Decryptor for DefaultDecryptor<E>
+where
+    E: From<DecryptError>,
+{
+    type Error = E;
+
+    fn decrypt(&self, body: &[u8]) -> Result<Vec<u8>, Self::Error> {
+        let body = std::str::from_utf8(body).map_err(DecryptError::from)?;
+
+        let token: jwe::Compact<Vec<u8>, Empty> = jwe::Compact::new_encrypted(body);
+
+        match token
+            .decrypt(
+                &self.key,
+                KeyManagementAlgorithm::A256GCMKW,
+                ContentEncryptionAlgorithm::A256GCM,
+            )
+            .map_err(DecryptError::from)?
+        {
+            jwe::Compact::Decrypted { payload, .. } => Ok(payload),
+            _ => Err(DecryptError::DecryptionFailed.into()),
+        }
     }
 }
 

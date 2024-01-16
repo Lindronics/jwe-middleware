@@ -1,6 +1,5 @@
 use std::{
     future::{ready, Future, Ready},
-    marker::PhantomData,
     rc::Rc,
 };
 
@@ -10,7 +9,7 @@ use actix_web::{
     Error, ResponseError,
 };
 use futures_util::future::LocalBoxFuture;
-use jwe_core::{Empty, JWK};
+use jwe_core::Encryptor;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Middleware
@@ -18,21 +17,21 @@ use jwe_core::{Empty, JWK};
 
 pub struct EncryptResponse<K, E> {
     keystore: Rc<K>,
-    error: PhantomData<E>,
+    encryptor: Rc<E>,
 }
 
 impl<K, E> EncryptResponse<K, E>
 where
     K: Keystore,
-    E: ResponseError + From<EncryptError<K::Error>>,
+    E: Encryptor,
 {
-    pub fn new(keystore: K) -> Self
+    pub fn new(keystore: K, encryptor: E) -> Self
     where
         K: Keystore,
     {
         EncryptResponse {
             keystore: Rc::new(keystore),
-            error: PhantomData,
+            encryptor: Rc::new(encryptor),
         }
     }
 }
@@ -41,7 +40,9 @@ impl<S: 'static, K, E> Transform<S, ServiceRequest> for EncryptResponse<K, E>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<BoxBody>, Error = Error>,
     K: Keystore + 'static,
-    E: ResponseError + From<EncryptError<K::Error>> + 'static,
+    K::Error: ResponseError,
+    E: Encryptor<Key = K::Key> + 'static,
+    E::Error: ResponseError,
 {
     type Response = ServiceResponse<BoxBody>;
     type Error = Error;
@@ -53,7 +54,7 @@ where
         ready(Ok(EncryptResponseMiddleware {
             service: Rc::new(service),
             keystore: self.keystore.clone(),
-            error: PhantomData,
+            encryptor: self.encryptor.clone(),
         }))
     }
 }
@@ -61,14 +62,16 @@ where
 pub struct EncryptResponseMiddleware<S, K, E> {
     service: Rc<S>,
     keystore: Rc<K>,
-    error: PhantomData<E>,
+    encryptor: Rc<E>,
 }
 
 impl<S, K, E> Service<ServiceRequest> for EncryptResponseMiddleware<S, K, E>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<BoxBody>, Error = Error> + 'static,
     K: Keystore + 'static,
-    E: ResponseError + From<EncryptError<K::Error>> + 'static,
+    K::Error: ResponseError,
+    E: Encryptor<Key = K::Key> + 'static,
+    E::Error: ResponseError,
 {
     type Response = ServiceResponse<BoxBody>;
     type Error = Error;
@@ -79,19 +82,20 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let svc = self.service.clone();
         let keystore = self.keystore.clone();
+        let encryptor = self.encryptor.clone();
 
         Box::pin(async move {
-            let jwk = keystore
-                .select_key(&req)
-                .await
-                .map_err(EncryptError::KeystoreError)
-                .map_err(E::from)?
-                .ok_or(EncryptError::KeyNotFound)
-                .map_err(E::from)?;
+            let jwk = keystore.select_key(&req).await?;
 
             let res = svc.call(req).await?.map_body(|_, body| {
-                let body = body.try_into_bytes().unwrap().to_vec();
-                let encrypted = jwe_core::encrypt(body, jwk).unwrap();
+                let body = match body.try_into_bytes().map(|b| b.to_vec()) {
+                    Ok(body) => body,
+                    Err(e) => return e.boxed(),
+                };
+                let encrypted = match encryptor.encrypt(body, jwk) {
+                    Ok(encrypted) => encrypted,
+                    Err(e) => return e.error_response().into_body(),
+                };
                 BoxBody::new(encrypted)
             });
 
@@ -105,24 +109,11 @@ where
 ////////////////////////////////////////////////////////////////////////////////
 
 pub trait Keystore {
-    type Error;
+    type Error: std::fmt::Debug;
+    type Key;
 
     fn select_key(
         &self,
         request: &ServiceRequest,
-    ) -> impl Future<Output = Result<Option<&JWK<Empty>>, Self::Error>> + Send;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// Error
-////////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug, thiserror::Error)]
-pub enum EncryptError<K> {
-    #[error("Encryption failed")]
-    EncryptionFailed,
-    #[error("Keystore could not be accessed: {0}")]
-    KeystoreError(K),
-    #[error("Key could not be found")]
-    KeyNotFound,
+    ) -> impl Future<Output = Result<&Self::Key, Self::Error>> + Send;
 }

@@ -1,6 +1,5 @@
 use std::{
     future::{ready, Ready},
-    marker::PhantomData,
     rc::Rc,
 };
 
@@ -10,58 +9,63 @@ use actix_web::{
     web, Error, ResponseError,
 };
 use futures_util::future::LocalBoxFuture;
-use jwe_core::{Empty, JWK};
+use jwe_core::Decryptor;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Middlware
 ////////////////////////////////////////////////////////////////////////////////
 
-pub struct DecryptRequest<E> {
-    jwk: Rc<JWK<Empty>>,
-    e: PhantomData<E>,
+pub struct DecryptRequest<D> {
+    decryptor: Rc<D>,
 }
 
-impl<E> DecryptRequest<E> {
-    pub fn new(jwk: JWK<Empty>) -> Self {
+impl<D> DecryptRequest<D>
+where
+    D: Decryptor,
+{
+    pub fn new(decryptor: D) -> Self
+    where
+        D: Decryptor,
+        D::Error: ResponseError,
+    {
         Self {
-            jwk: Rc::new(jwk),
-            e: PhantomData,
+            decryptor: Rc::new(decryptor),
         }
     }
 }
 
-impl<S, B, E> Transform<S, ServiceRequest> for DecryptRequest<E>
+impl<S, D> Transform<S, ServiceRequest> for DecryptRequest<D>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    E: ResponseError + From<DecryptError> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse, Error = Error> + 'static,
+    D: Decryptor + 'static,
+    D::Error: ResponseError,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse;
     type Error = Error;
     type InitError = ();
-    type Transform = DecryptRequestMiddleware<S, E>;
+    type Transform = DecryptRequestMiddleware<S, D>;
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
         ready(Ok(DecryptRequestMiddleware {
             service: Rc::new(service),
-            jwk: self.jwk.clone(),
-            e: PhantomData,
+            decryptor: self.decryptor.clone(),
         }))
     }
 }
 
-pub struct DecryptRequestMiddleware<S, E> {
+pub struct DecryptRequestMiddleware<S, D> {
     service: Rc<S>,
-    jwk: Rc<JWK<Empty>>,
-    e: PhantomData<E>,
+    decryptor: Rc<D>,
 }
 
-impl<S, B, E> Service<ServiceRequest> for DecryptRequestMiddleware<S, E>
+impl<S, D> Service<ServiceRequest> for DecryptRequestMiddleware<S, D>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
-    E: ResponseError + From<DecryptError> + 'static,
+    S: Service<ServiceRequest, Response = ServiceResponse, Error = Error> + 'static,
+    D: Decryptor + 'static,
+    D::Error: ResponseError,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -69,14 +73,12 @@ where
 
     fn call(&self, mut req: ServiceRequest) -> Self::Future {
         let svc = self.service.clone();
-        let jwk = self.jwk.clone();
+        let decryptor = self.decryptor.clone();
 
         Box::pin(async move {
             let body = req.extract::<web::Bytes>().await?;
 
-            let decrypted_body = jwe_core::decrypt(&body, &jwk)
-                .map_err(DecryptError::from)
-                .map_err(E::from)?;
+            let decrypted_body = decryptor.decrypt(&body)?;
 
             req.set_payload(bytes_to_payload(decrypted_body.into()));
 
