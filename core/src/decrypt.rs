@@ -1,6 +1,9 @@
+/// Types that can decrypt a body.
 pub trait Decryptor {
+    /// Error returned by the decryptor.
     type Error;
 
+    /// Decrypt the body.
     fn decrypt(&self, body: &[u8]) -> Result<Vec<u8>, Self::Error>;
 }
 
@@ -23,7 +26,9 @@ pub mod default {
 
     /// Default decryptor
     ///
-    /// [E] is the error type that will be returned
+    /// [E] is the error type that will be returned.
+    /// By specifying a custom error type, you can ensure that the middleware
+    /// returns errors in the format you expect.
     pub struct DefaultDecryptor<E = DecryptError> {
         key: JWK<Empty>,
         e: PhantomData<E>,

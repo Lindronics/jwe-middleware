@@ -1,7 +1,11 @@
+/// Types that can encrypt a body.
 pub trait Encryptor {
+    /// Error returned by the encryptor.
     type Error;
+    /// Type of the key used to encrypt the body.
     type Key;
 
+    /// Encrypt the body using the given key.
     fn encrypt(&self, body: Vec<u8>, key: &Self::Key) -> Result<String, Self::Error>;
 }
 
@@ -26,6 +30,8 @@ pub mod default {
     /// Default encryptor
     ///
     /// [E] is the error type that will be returned
+    /// By specifying a custom error type, you can ensure that the middleware
+    /// returns errors in the format you expect.
     pub struct DefaultEncryptor<E = EncryptError> {
         e: PhantomData<E>,
     }

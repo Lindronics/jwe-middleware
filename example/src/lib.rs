@@ -28,16 +28,20 @@ impl Default for Server {
             .local_addr()
             .unwrap();
 
+        // Generate some random keys
         let server_key = jwe_core::JWK::new_octet_key(&[0; 32], Empty {});
         let mut client_key = jwe_core::JWK::new_octet_key(&[0; 32], Empty {});
         client_key.common.key_id = Some("asdf".into());
 
+        // Create a keystore containing all keys.
+        // You wouldn't include the server_key usually, this is just for testing.
         let keystore = CustomKeystore {
             keys: jwe_core::JWKSet {
                 keys: vec![server_key.clone(), client_key.clone()],
             },
         };
 
+        // Initialize middlewares
         let decryptor = DefaultDecryptor::<CustomEncryptError>::new(server_key.clone());
         let encryptor = DefaultEncryptor::<CustomEncryptError>::default();
         let keystore_clone = keystore.clone();
@@ -73,6 +77,7 @@ async fn handler(request: web::Bytes) -> web::Bytes {
     request
 }
 
+/// Custom keystore implementation.
 #[derive(Clone)]
 pub struct CustomKeystore {
     pub keys: JWKSet<Empty>,
@@ -86,6 +91,7 @@ impl Keystore for CustomKeystore {
         &self,
         request: &actix_web::dev::ServiceRequest,
     ) -> impl std::future::Future<Output = Result<&jwe_core::JWK<Empty>, Self::Error>> + Send {
+        // We determine the key to use based on "response-kid" header of the request.
         let Some(Ok(kid)) = request
             .headers()
             .get("response-kid")
