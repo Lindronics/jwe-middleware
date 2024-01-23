@@ -24,7 +24,7 @@ pub mod default {
     /// Default decryptor
     ///
     /// [E] is the error type that will be returned
-    pub struct DefaultDecryptor<E> {
+    pub struct DefaultDecryptor<E = DecryptError> {
         key: JWK<Empty>,
         e: PhantomData<E>,
     }
@@ -61,28 +61,22 @@ pub mod default {
                 .map_err(DecryptError::from)?
             {
                 jwe::Compact::Decrypted { payload, .. } => Ok(payload),
-                _ => Err(DecryptError::DecryptionFailed.into()),
+                _ => Err(DecryptError::DecryptionFailed("Invalid state".into()).into()),
             }
         }
     }
 
     #[derive(Debug, thiserror::Error)]
     pub enum DecryptError {
-        #[error("Invalid body")]
-        InvalidContent,
-        #[error("Decryption failed")]
-        DecryptionFailed,
-    }
-
-    impl From<std::str::Utf8Error> for DecryptError {
-        fn from(_e: std::str::Utf8Error) -> Self {
-            DecryptError::InvalidContent {}
-        }
+        #[error("Invalid body: {0}")]
+        InvalidContent(#[from] std::str::Utf8Error),
+        #[error("Decryption failed: {0}")]
+        DecryptionFailed(String),
     }
 
     impl From<biscuit::errors::Error> for DecryptError {
-        fn from(_e: biscuit::errors::Error) -> Self {
-            DecryptError::DecryptionFailed {}
+        fn from(e: biscuit::errors::Error) -> Self {
+            DecryptError::DecryptionFailed(e.to_string())
         }
     }
 }

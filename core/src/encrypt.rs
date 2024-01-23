@@ -26,7 +26,7 @@ pub mod default {
     /// Default encryptor
     ///
     /// [E] is the error type that will be returned
-    pub struct DefaultEncryptor<E> {
+    pub struct DefaultEncryptor<E = EncryptError> {
         e: PhantomData<E>,
     }
 
@@ -61,20 +61,20 @@ pub mod default {
 
             match token.encrypt(key, &options).map_err(EncryptError::from)? {
                 jwe::Compact::Encrypted(encrypted_jwe) => Ok(encrypted_jwe.encode()),
-                _ => Err(EncryptError::EncryptionFailed.into()),
+                _ => Err(EncryptError::EncryptionFailed("Invalid state".into()).into()),
             }
         }
     }
 
     #[derive(Debug, thiserror::Error)]
     pub enum EncryptError {
-        #[error("Decryption failed")]
-        EncryptionFailed,
+        #[error("Encryption failed: {0}")]
+        EncryptionFailed(String),
     }
 
     impl From<biscuit::errors::Error> for EncryptError {
-        fn from(_e: biscuit::errors::Error) -> Self {
-            EncryptError::EncryptionFailed {}
+        fn from(e: biscuit::errors::Error) -> Self {
+            EncryptError::EncryptionFailed(e.to_string())
         }
     }
 }

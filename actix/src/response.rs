@@ -108,10 +108,12 @@ where
 // Keystore
 ////////////////////////////////////////////////////////////////////////////////
 
+/// Keystore for selecting a key to use for encryption
 pub trait Keystore {
     type Error: std::fmt::Debug;
     type Key;
 
+    /// Selects a key to use for encrypting the response based on the initial request
     fn select_key(
         &self,
         request: &ServiceRequest,
