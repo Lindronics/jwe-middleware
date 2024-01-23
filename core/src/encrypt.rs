@@ -30,6 +30,12 @@ pub mod default {
         e: PhantomData<E>,
     }
 
+    impl<E> Clone for DefaultEncryptor<E> {
+        fn clone(&self) -> Self {
+            Self { e: PhantomData }
+        }
+    }
+
     impl<E> Default for DefaultEncryptor<E>
     where
         E: From<EncryptError>,
@@ -66,7 +72,7 @@ pub mod default {
         }
     }
 
-    #[derive(Debug, thiserror::Error)]
+    #[derive(Clone, Debug, thiserror::Error)]
     pub enum EncryptError {
         #[error("Encryption failed: {0}")]
         EncryptionFailed(String),

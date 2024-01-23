@@ -29,6 +29,15 @@ pub mod default {
         e: PhantomData<E>,
     }
 
+    impl<E> Clone for DefaultDecryptor<E> {
+        fn clone(&self) -> Self {
+            Self {
+                key: self.key.clone(),
+                e: PhantomData,
+            }
+        }
+    }
+
     impl<E> DefaultDecryptor<E>
     where
         E: From<DecryptError>,
@@ -66,7 +75,7 @@ pub mod default {
         }
     }
 
-    #[derive(Debug, thiserror::Error)]
+    #[derive(Clone, Debug, thiserror::Error)]
     pub enum DecryptError {
         #[error("Invalid body: {0}")]
         InvalidContent(#[from] std::str::Utf8Error),

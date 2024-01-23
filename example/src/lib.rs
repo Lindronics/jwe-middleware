@@ -38,7 +38,8 @@ impl Default for Server {
             },
         };
 
-        let server_key_clone = server_key.clone();
+        let decryptor = DefaultDecryptor::<CustomEncryptError>::new(server_key.clone());
+        let encryptor = DefaultEncryptor::<CustomEncryptError>::default();
         let keystore_clone = keystore.clone();
 
         let join_handle = tokio::spawn(
@@ -46,12 +47,10 @@ impl Default for Server {
                 App::new().service(
                     web::resource("/")
                         .to(handler)
-                        .wrap(DecryptRequest::new(
-                            DefaultDecryptor::<CustomEncryptError>::new(server_key_clone.clone()),
-                        ))
+                        .wrap(DecryptRequest::new(decryptor.clone()))
                         .wrap(EncryptResponse::new(
                             keystore_clone.clone(),
-                            DefaultEncryptor::<CustomEncryptError>::default(),
+                            encryptor.clone(),
                         )),
                 )
             })
